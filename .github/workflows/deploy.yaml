@@ -23,6 +23,14 @@ jobs:
           current_hash=$(git rev-parse origin/develop)
           echo "DEVELOPHASH=$current_hash" >> $GITHUB_ENV
 
+      - name: Get more recent version if on master
+        if: github.ref == 'refs/heads/master'
+        run: |
+          export MASTER_VERSION=$(cat ${{ env.APP_VERSION_PATH }}| cut -f1 -d+)
+          export MASTER_VERSION_CODE=$(cat ${{ env.APP_VERSION_PATH }}| cut -f2 -d+)
+          export DEVELOP_VERSION_CODE=$(git show develop:uni/${{ env.APP_VERSION_PATH }}| cut -f2 -d+)
+          echo "$MASTER_VERSION+$(printf "$MASTER_VERSION_CODE\n$DEVELOP_VERSION_CODE" | sort -V | tail -n1)" > ${{ env.APP_VERSION_PATH }}
+
       - name: Bump flutter patch version
         if: github.ref == 'refs/heads/develop' || github.sha != env.DEVELOPHASH
         run: perl -i -pe 's/^(\d+\.\d+\.)(\d+)(\+)(\d+)$/$1.($2+1).($3).($4+1)/e' ${{ env.APP_VERSION_PATH }}
@@ -37,18 +45,15 @@ jobs:
       - uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: "Bump app version [no ci]"
-
-      - name: Propagate master version bump to develop if master version is aad
+      
+      - name: Cherrypick version bump into develop
         if: github.ref == 'refs/heads/master'
-        run: |
-          git fetch origin develop
-          if [[ $(git diff --quiet HEAD~1 origin/develop) ]]; then
-            echo "Master version does not match develop version"
-          else
-            echo "Master version matches develop version"
-            git push --force-with-lease origin HEAD:develop
-          fi
-
+        run: 
+          export MASTERHEAD=$(git rev-parse HEAD)
+          git switch develop
+          git pull
+          git cherry-pick $MASTERHEAD -x
+          git push
   build:
     name: "Build App Bundle"
     runs-on: ubuntu-latest
