@@ -12,7 +12,6 @@ import 'package:uni/view/home/widgets/restaurant_card.dart';
 import 'package:uni/view/home/widgets/schedule_card.dart';
 import 'package:uni/view/library/widgets/library_occupation_card.dart';
 import 'package:uni/view/profile/widgets/account_info_card.dart';
-
 import 'package:uni/view/profile/widgets/print_info_card.dart';
 
 typedef CardCreator = GenericCard Function(
@@ -20,7 +19,6 @@ typedef CardCreator = GenericCard Function(
   required bool editingMode,
   void Function()? onDelete,
 });
-
 class MainCardsList extends StatefulWidget {
   const MainCardsList(
     this.favoriteCardTypes,
@@ -53,13 +51,31 @@ class MainCardsListState extends State<MainCardsList> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return WillPopScope(
+        onWillPop: () async {
+        if (isEditing) {
+          setState(() {
+            isEditing = false;
+          });
+          return false;
+        }
+        return true;
+    },
+    child: Scaffold(
       body: BackButtonExitWrapper(
         child: SizedBox(
           height: MediaQuery.of(context).size.height,
           child: isEditing
               ? ReorderableListView(
-                  onReorder: reorderCard,
+                  onReorder: (oldIndex, newIndex) {
+                    setState(() {
+                      if (oldIndex < newIndex) {
+                        newIndex -= 1;
+                      }
+                      final item = widget.favoriteCardTypes.removeAt(oldIndex);
+                      widget.favoriteCardTypes.insert(newIndex, item);
+                    });
+                  },
                   header: createTopBar(context),
                   children: favoriteCardsFromTypes(
                     widget.favoriteCardTypes,
@@ -75,39 +91,54 @@ class MainCardsListState extends State<MainCardsList> {
                     ),
                   ],
                 ),
+              ),
+            ),
+          floatingActionButton: isEditing ? createActionButton(context) : null,
         ),
-      ),
-      floatingActionButton: isEditing ? createActionButton(context) : null,
-    );
-  }
+      );
+    }
 
   Widget createActionButton(BuildContext context) {
     return FloatingActionButton(
-      onPressed: () => showDialog<void>(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: Text(
-              S.of(context).widget_prompt,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            content: SizedBox(
-              height: 200,
-              width: 100,
-              child: ListView(children: getCardAdders(context)),
-            ),
-            actions: [
-              TextButton(
-                child: Text(
-                  S.of(context).cancel,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                onPressed: () => Navigator.pop(context),
+      onPressed: () async {
+        final result = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text(
+                S.of(context).widget_prompt,
+                style: Theme.of(context).textTheme.headlineSmall,
               ),
-            ],
-          );
-        },
-      ), //Add FAB functionality here
+              content: SizedBox(
+                height: 200,
+                width: 100,
+                child: ListView(children: getCardAdders(context)),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(false);
+                  },
+                  child: Text(S.of(context).cancel),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(true);
+                  },
+                  child: Text(S.of(context).yes),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (result ?? false) {
+          widget.saveFavoriteCards(widget.favoriteCardTypes);
+          setState(() {
+            isEditing = true;
+          });
+        }
+      },
       tooltip: S.of(context).add_widget,
       child: Icon(Icons.add, color: Theme.of(context).colorScheme.onPrimary),
     );
@@ -212,16 +243,16 @@ class MainCardsListState extends State<MainCardsList> {
   }
 
   void removeCardIndexFromFavorites(int i, BuildContext context) {
-    final favorites = List<FavoriteWidgetType>.from(widget.favoriteCardTypes)
-      ..removeAt(i);
-    widget.saveFavoriteCards(favorites);
+    setState(() {
+      widget.favoriteCardTypes.removeAt(i);
+    });
   }
 
   void addCardToFavorites(FavoriteWidgetType type, BuildContext context) {
-    final favorites = List<FavoriteWidgetType>.from(widget.favoriteCardTypes);
-    if (!favorites.contains(type)) {
-      favorites.add(type);
-    }
-    widget.saveFavoriteCards(favorites);
+    setState(() {
+      if (!widget.favoriteCardTypes.contains(type)) {
+        widget.favoriteCardTypes.add(type);
+      }
+    });
   }
 }
