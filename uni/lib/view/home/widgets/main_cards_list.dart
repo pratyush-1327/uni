@@ -39,7 +39,7 @@ class MainCardsList extends StatefulWidget {
     FavoriteWidgetType.busStops: BusStopCard.fromEditingInformation,
     FavoriteWidgetType.restaurant: RestaurantCard.fromEditingInformation,
     FavoriteWidgetType.libraryOccupation:
-        LibraryOccupationCard.fromEditingInformation,
+    LibraryOccupationCard.fromEditingInformation,
   };
 
   @override
@@ -53,61 +53,94 @@ class MainCardsListState extends State<MainCardsList> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: BackButtonExitWrapper(
-        child: SizedBox(
-          height: MediaQuery.of(context).size.height,
-          child: isEditing
-              ? ReorderableListView(
-                  onReorder: reorderCard,
-                  header: createTopBar(context),
-                  children: favoriteCardsFromTypes(
-                    widget.favoriteCardTypes,
-                    context,
-                  ),
-                )
-              : ListView(
-                  children: <Widget>[
-                    createTopBar(context),
-                    ...favoriteCardsFromTypes(
-                      widget.favoriteCardTypes,
-                      context,
-                    ),
-                  ],
+    return WillPopScope(
+      onWillPop: () async {
+        if (isEditing) {
+          setState(() {
+            isEditing = false;
+          });
+          return false;
+        }
+        return true;
+      },
+      child: Scaffold(
+        body: BackButtonExitWrapper(
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height,
+            child: isEditing
+                ? ReorderableListView(
+              onReorder: (oldIndex, newIndex) {
+                setState(() {
+                  if (oldIndex < newIndex) {
+                    newIndex -= 1;
+                  }
+                  final item = widget.favoriteCardTypes.removeAt(oldIndex);
+                  widget.favoriteCardTypes.insert(newIndex, item);
+                });
+              },
+              header: createTopBar(context),
+              children: favoriteCardsFromTypes(
+                widget.favoriteCardTypes,
+                context,
+              ),
+            )
+                : ListView(
+              children: <Widget>[
+                createTopBar(context),
+                ...favoriteCardsFromTypes(
+                  widget.favoriteCardTypes,
+                  context,
                 ),
+              ],
+            ),
+          ),
         ),
+        floatingActionButton: isEditing ? createActionButton(context) : null,
       ),
-      floatingActionButton: isEditing ? createActionButton(context) : null,
     );
   }
 
   Widget createActionButton(BuildContext context) {
     return FloatingActionButton(
-      onPressed: () => showDialog<void>(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: Text(
-              S.of(context).widget_prompt,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            content: SizedBox(
-              height: 200,
-              width: 100,
-              child: ListView(children: getCardAdders(context)),
-            ),
-            actions: [
-              TextButton(
-                child: Text(
-                  S.of(context).cancel,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                onPressed: () => Navigator.pop(context),
+      onPressed: () async {
+        final result = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text(
+                S.of(context).widget_prompt,
+                style: Theme.of(context).textTheme.headlineSmall,
               ),
-            ],
-          );
-        },
-      ), //Add FAB functionality here
+              content: SizedBox(
+                height: 200,
+                width: 100,
+                child: ListView(children: getCardAdders(context)),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(false);
+                  },
+                  child: Text(S.of(context).cancel),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(true);
+                  },
+                  child: Text(S.of(context).yes),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (result ?? false) {
+          widget.saveFavoriteCards(widget.favoriteCardTypes);
+          setState(() {
+            isEditing = true;
+          });
+        }
+      },
       tooltip: S.of(context).add_widget,
       child: Icon(Icons.add, color: Theme.of(context).colorScheme.onPrimary),
     );
@@ -121,21 +154,21 @@ class MainCardsListState extends State<MainCardsList> {
         .where((e) => !widget.favoriteCardTypes.contains(e.key))
         .map(
           (e) => DecoratedBox(
-            decoration: const BoxDecoration(),
-            child: ListTile(
-              title: Text(
-                e
-                    .value(Key(e.key.index.toString()), editingMode: false)
-                    .getTitle(context),
-                textAlign: TextAlign.center,
-              ),
-              onTap: () {
-                addCardToFavorites(e.key, context);
-                Navigator.pop(context);
-              },
-            ),
+        decoration: const BoxDecoration(),
+        child: ListTile(
+          title: Text(
+            e
+                .value(Key(e.key.index.toString()), editingMode: false)
+                .getTitle(context),
+            textAlign: TextAlign.center,
           ),
-        )
+          onTap: () {
+            addCardToFavorites(e.key, context);
+            Navigator.pop(context);
+          },
+        ),
+      ),
+    )
         .toList();
 
     return possibleCardAdditions.isEmpty
@@ -144,8 +177,8 @@ class MainCardsListState extends State<MainCardsList> {
   }
 
   Widget createTopBar(
-    BuildContext context,
-  ) {
+      BuildContext context,
+      ) {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
       child: Row(
@@ -180,11 +213,11 @@ class MainCardsListState extends State<MainCardsList> {
   }
 
   List<Widget> favoriteCardsFromTypes(
-    List<FavoriteWidgetType> cardTypes,
-    BuildContext context,
-  ) {
+      List<FavoriteWidgetType> cardTypes,
+      BuildContext context,
+      ) {
     final userSession =
-        Provider.of<SessionProvider>(context, listen: false).state!;
+    Provider.of<SessionProvider>(context, listen: false).state!;
     return cardTypes
         .where((type) => type.isVisible(userSession.faculties))
         .where((type) => MainCardsList.cardCreators.containsKey(type))
@@ -199,11 +232,11 @@ class MainCardsListState extends State<MainCardsList> {
   }
 
   void reorderCard(
-    int oldIndex,
-    int newIndex,
-  ) {
+      int oldIndex,
+      int newIndex,
+      ) {
     final newFavorites =
-        List<FavoriteWidgetType>.from(widget.favoriteCardTypes);
+    List<FavoriteWidgetType>.from(widget.favoriteCardTypes);
     final tmp = newFavorites[oldIndex];
     newFavorites
       ..removeAt(oldIndex)
@@ -212,16 +245,16 @@ class MainCardsListState extends State<MainCardsList> {
   }
 
   void removeCardIndexFromFavorites(int i, BuildContext context) {
-    final favorites = List<FavoriteWidgetType>.from(widget.favoriteCardTypes)
-      ..removeAt(i);
-    widget.saveFavoriteCards(favorites);
+    setState(() {
+      widget.favoriteCardTypes.removeAt(i);
+    });
   }
 
   void addCardToFavorites(FavoriteWidgetType type, BuildContext context) {
-    final favorites = List<FavoriteWidgetType>.from(widget.favoriteCardTypes);
-    if (!favorites.contains(type)) {
-      favorites.add(type);
-    }
-    widget.saveFavoriteCards(favorites);
+    setState(() {
+      if (!widget.favoriteCardTypes.contains(type)) {
+        widget.favoriteCardTypes.add(type);
+      }
+    });
   }
 }
