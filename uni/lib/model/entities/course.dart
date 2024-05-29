@@ -15,7 +15,7 @@ part 'course.g.dart';
 class Course {
   Course({
     required this.id,
-    this.festId = 0,
+    this.festId,
     this.name,
     this.abbreviation,
     this.currYear,

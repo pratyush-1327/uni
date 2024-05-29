@@ -1,5 +1,4 @@
 import 'package:json_annotation/json_annotation.dart';
-import 'package:logger/logger.dart';
 
 part 'trip.g.dart';
 
@@ -17,11 +16,6 @@ class Trip {
   final String destination;
   final int timeRemaining;
   Map<String, dynamic> toJson() => _$TripToJson(this);
-
-  /// Prints the data in this trip to the [Logger] with an INFO level.
-  void printTrip() {
-    Logger().i('$line ($destination) - $timeRemaining');
-  }
 
   /// Compares the remaining time of two trips.
   int compare(Trip other) {

@@ -2,7 +2,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:tuple/tuple.dart';
 import 'package:uni/controller/background_workers/notifications.dart';
 import 'package:uni/controller/fetchers/fees_fetcher.dart';
-import 'package:uni/controller/local_storage/app_shared_preferences.dart';
+import 'package:uni/controller/local_storage/preferences_controller.dart';
 import 'package:uni/controller/parsers/parser_fees.dart';
 import 'package:uni/model/entities/session.dart';
 import 'package:uni/utils/duration_string_formatter.dart';
@@ -53,14 +53,18 @@ class TuitionNotification extends Notification {
   @override
   Future<bool> shouldDisplay(Session session) async {
     final notificationsAreDisabled =
-        !(await AppSharedPreferences.getTuitionNotificationToggle());
-    if (notificationsAreDisabled) return false;
+        !PreferencesController.getTuitionNotificationToggle();
+    if (notificationsAreDisabled) {
+      return false;
+    }
     final feesFetcher = FeesFetcher();
     final dueDate = parseFeesNextLimit(
       await feesFetcher.getUserFeesResponse(session),
     );
 
-    if (dueDate == null) return false;
+    if (dueDate == null) {
+      return false;
+    }
 
     _dueDate = dueDate;
     return DateTime.now().difference(_dueDate).inDays >= -3;

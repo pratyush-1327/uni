@@ -6,7 +6,6 @@ import 'package:http/http.dart' as http;
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:provider/provider.dart';
-import 'package:tuple/tuple.dart';
 import 'package:uni/controller/networking/network_router.dart';
 import 'package:uni/controller/parsers/parser_exams.dart';
 import 'package:uni/model/entities/course.dart';
@@ -21,7 +20,9 @@ import '../../mocks/integration/src/exams_page_test.mocks.dart';
 import '../../test_widget.dart';
 
 @GenerateNiceMocks([MockSpec<http.Client>(), MockSpec<http.Response>()])
-void main() {
+void main() async {
+  await initTestEnvironment();
+
   group('ExamsPage Integration Tests', () {
     final mockClient = MockClient();
     final mockResponse = MockResponse();
@@ -58,7 +59,7 @@ void main() {
 
     final profile = Profile()..courses = [Course(id: 7474, faculty: 'feup')];
 
-    testWidgets('Exams', (WidgetTester tester) async {
+    testWidgets('Exams', (tester) async {
       NetworkRouter.httpClient = mockClient;
       final mockHtml = File('test/integration/resources/exam_example.html')
           .readAsStringSync();
@@ -80,13 +81,15 @@ void main() {
       expect(find.byKey(Key('$sopeExam-exam')), findsNothing);
       expect(find.byKey(Key('$mdisExam-exam')), findsNothing);
 
-      await examProvider.fetchUserExams(
+      final exams = await examProvider.fetchUserExams(
         ParserExams(),
-        const Tuple2('', ''),
         profile,
         Session(username: '', cookies: '', faculties: ['feup']),
         [sopeCourseUnit, sdisCourseUnit],
+        persistentSession: false,
       );
+
+      examProvider.setState(exams);
 
       await tester.pumpAndSettle();
       expect(find.byKey(Key('$sdisExam-exam')), findsOneWidget);
@@ -94,7 +97,7 @@ void main() {
       expect(find.byKey(Key('$mdisExam-exam')), findsNothing);
     });
 
-    testWidgets('Filtered Exams', (WidgetTester tester) async {
+    testWidgets('Filtered Exams', (tester) async {
       NetworkRouter.httpClient = mockClient;
       final mockHtml = File('test/integration/resources/exam_example.html')
           .readAsStringSync();
@@ -116,26 +119,26 @@ void main() {
       expect(find.byKey(Key('$sdisExam-exam')), findsNothing);
       expect(find.byKey(Key('$sopeExam-exam')), findsNothing);
 
-      await examProvider.fetchUserExams(
+      final exams = await examProvider.fetchUserExams(
         ParserExams(),
-        const Tuple2('', ''),
         profile,
         Session(username: '', cookies: '', faculties: ['feup']),
         [sopeCourseUnit, sdisCourseUnit],
+        persistentSession: false,
       );
+
+      examProvider.setState(exams);
 
       await tester.pumpAndSettle();
       expect(find.byKey(Key('$sdisExam-exam')), findsOneWidget);
       expect(find.byKey(Key('$sopeExam-exam')), findsOneWidget);
-      expect(find.byIcon(Icons.filter_alt), findsOneWidget);
+      expect(find.byIcon(Icons.filter_list), findsOneWidget);
 
       filteredExams['ExamDoesNotExist'] = true;
 
-      await examProvider.setFilteredExams(filteredExams);
-
       await tester.pumpAndSettle();
 
-      final filterButton = find.widgetWithIcon(IconButton, Icons.filter_alt);
+      final filterButton = find.widgetWithIcon(IconButton, Icons.filter_list);
       expect(filterButton, findsOneWidget);
 
       await tester.tap(filterButton);

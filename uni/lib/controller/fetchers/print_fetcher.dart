@@ -21,7 +21,9 @@ class PrintFetcher implements SessionDependantFetcher {
     double amount,
     Session session,
   ) async {
-    if (amount < 1.0) return Future.error('Amount less than 1,00€');
+    if (amount < 1.0) {
+      return Future.error('Amount less than 1,00€');
+    }
 
     final url = '${NetworkRouter.getBaseUrlsFromSession(session)[0]}'
         'gpag_ccorrentes_geral.gerar_mb';
@@ -30,7 +32,7 @@ class PrintFetcher implements SessionDependantFetcher {
       'p_tipo_id': '3',
       'pct_codigo': session.username,
       'p_valor': '1',
-      'p_valor_livre': amount.toStringAsFixed(2).trim().replaceAll('.', ',')
+      'p_valor_livre': amount.toStringAsFixed(2).trim().replaceAll('.', ','),
     };
 
     final headers = <String, String>{};

@@ -2,17 +2,19 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:logger/logger.dart';
 import 'package:provider/provider.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:uni/controller/networking/url_launcher.dart';
 import 'package:uni/generated/l10n.dart';
 import 'package:uni/model/entities/login_exceptions.dart';
 import 'package:uni/model/providers/startup/session_provider.dart';
 import 'package:uni/model/providers/state_providers.dart';
-import 'package:uni/model/request_status.dart';
-import 'package:uni/utils/drawer_items.dart';
+import 'package:uni/utils/navigation_items.dart';
 import 'package:uni/view/common_widgets/toast_message.dart';
+import 'package:uni/view/home/widgets/exit_app_dialog.dart';
 import 'package:uni/view/login/widgets/inputs.dart';
 import 'package:uni/view/theme.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class LoginPageView extends StatefulWidget {
   const LoginPageView({super.key});
@@ -23,10 +25,6 @@ class LoginPageView extends StatefulWidget {
 
 /// Manages the 'login section' view.
 class LoginPageViewState extends State<LoginPageView> {
-  List<String> faculties = [
-    'feup'
-  ]; // May choose more than one faculty in the dropdown.
-
   static final FocusNode usernameFocus = FocusNode();
   static final FocusNode passwordFocus = FocusNode();
 
@@ -36,55 +34,72 @@ class LoginPageViewState extends State<LoginPageView> {
       TextEditingController();
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  static bool _exitApp = false;
   bool _keepSignedIn = true;
   bool _obscurePasswordInput = true;
+  bool _loggingIn = false;
 
   Future<void> _login(BuildContext context) async {
     final stateProviders = StateProviders.fromContext(context);
     final sessionProvider = stateProviders.sessionProvider;
-    if (sessionProvider.status != RequestStatus.busy &&
-        _formKey.currentState!.validate()) {
+
+    if (!_loggingIn && _formKey.currentState!.validate()) {
       final user = usernameController.text.trim();
       final pass = passwordController.text.trim();
 
       try {
+        setState(() {
+          _loggingIn = true;
+        });
         await sessionProvider.postAuthentication(
           context,
           user,
           pass,
-          faculties,
           persistentSession: _keepSignedIn,
         );
+
+        usernameController.clear();
+        passwordController.clear();
+
         if (context.mounted) {
-          handleLogin(sessionProvider.status, context);
+          await Navigator.pushReplacementNamed(
+            context,
+            '/${NavigationItem.navPersonalArea.route}',
+          );
+          setState(() {
+            _loggingIn = false;
+          });
         }
-      } catch (error) {
+      } catch (error, stackTrace) {
+        setState(() {
+          _loggingIn = false;
+        });
         if (error is ExpiredCredentialsException) {
           updatePasswordDialog();
         } else if (error is InternetStatusException) {
-          unawaited(ToastMessage.warning(context, error.message));
+          if (context.mounted) {
+            unawaited(ToastMessage.warning(context, error.message));
+          }
         } else if (error is WrongCredentialsException) {
-          unawaited(ToastMessage.error(context, error.message));
+          if (context.mounted) {
+            unawaited(ToastMessage.error(context, error.message));
+          }
         } else {
-          unawaited(ToastMessage.error(context, S.of(context).failed_login));
+          Logger().e(error, stackTrace: stackTrace);
+          unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+          if (context.mounted) {
+            unawaited(ToastMessage.error(context, S.of(context).failed_login));
+          }
         }
       }
     }
   }
 
-  /// Updates the list of faculties
-  /// based on the options the user selected (used as a callback)
-  void setFaculties(List<String> faculties) {
-    setState(() {
-      this.faculties = faculties;
-    });
-  }
-
   /// Tracks if the user wants to keep signed in (has a
   /// checkmark on the button).
   void _setKeepSignedIn({bool? value}) {
-    if (value == null) return;
+    if (value == null) {
+      return;
+    }
     setState(() {
       _keepSignedIn = value;
     });
@@ -111,7 +126,7 @@ class LoginPageViewState extends State<LoginPageView> {
       child: Builder(
         builder: (context) => Scaffold(
           backgroundColor: darkRed,
-          body: WillPopScope(
+          body: BackButtonExitWrapper(
             child: Padding(
               padding: EdgeInsets.only(
                 left: queryData.size.width / 8,
@@ -158,29 +173,10 @@ class LoginPageViewState extends State<LoginPageView> {
                 ],
               ),
             ),
-            onWillPop: () => onWillPop(context),
           ),
         ),
       ),
     );
-  }
-
-  /// Delay time before the user leaves the app
-  Future<void> exitAppWaiter() async {
-    _exitApp = true;
-    await Future<void>.delayed(const Duration(seconds: 2));
-    _exitApp = false;
-  }
-
-  /// If the user tries to leave, displays a quick prompt for him to confirm.
-  /// If this is already the second time, the user leaves the app.
-  Future<bool> onWillPop(BuildContext context) {
-    if (_exitApp) {
-      return Future.value(true);
-    }
-    ToastMessage.info(context, S.of(context).press_again);
-    exitAppWaiter();
-    return Future.value(false);
   }
 
   /// Creates the title for the login menu.
@@ -212,7 +208,6 @@ class LoginPageViewState extends State<LoginPageView> {
       child: SingleChildScrollView(
         child: Column(
           children: [
-            createFacultyInput(context, faculties, setFaculties),
             Padding(
               padding: EdgeInsets.only(bottom: queryData.size.height / 35),
             ),
@@ -259,7 +254,7 @@ class LoginPageViewState extends State<LoginPageView> {
               ),
         ),
       ),
-      onTap: () => launchUrl(Uri.parse('https://self-id.up.pt/reset')),
+      onTap: () => launchUrlWithToast(context, 'https://self-id.up.pt/reset'),
     );
   }
 
@@ -267,7 +262,7 @@ class LoginPageViewState extends State<LoginPageView> {
   Widget createStatusWidget(BuildContext context) {
     return Consumer<SessionProvider>(
       builder: (context, sessionProvider, _) {
-        if (sessionProvider.status == RequestStatus.busy) {
+        if (_loggingIn) {
           return const SizedBox(
             height: 60,
             child:
@@ -279,21 +274,10 @@ class LoginPageViewState extends State<LoginPageView> {
     );
   }
 
-  void handleLogin(RequestStatus? status, BuildContext context) {
-    if (status == RequestStatus.successful) {
-      Navigator.pushReplacementNamed(
-        context,
-        '/${DrawerItem.navPersonalArea.title}',
-      );
-    } else if (status == RequestStatus.failed) {
-      ToastMessage.error(context, S.of(context).failed_login);
-    }
-  }
-
   void updatePasswordDialog() {
     showDialog<void>(
       context: context,
-      builder: (BuildContext context) {
+      builder: (context) {
         return AlertDialog(
           title: Text(S.of(context).expired_password),
           content: Column(
@@ -323,12 +307,8 @@ class LoginPageViewState extends State<LoginPageView> {
             ),
             ElevatedButton(
               child: Text(S.of(context).change),
-              onPressed: () async {
-                const url = 'https://self-id.up.pt/password';
-                if (await canLaunchUrl(Uri.parse(url))) {
-                  await launchUrl(Uri.parse(url));
-                }
-              },
+              onPressed: () =>
+                  launchUrlWithToast(context, 'https://self-id.up.pt/password'),
             ),
           ],
         );

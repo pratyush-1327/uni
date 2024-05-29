@@ -1,21 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:uni/controller/cleanup.dart';
-import 'package:uni/utils/drawer_items.dart';
+import 'package:uni/main.dart';
 import 'package:uni/view/login/login.dart';
 
 /// Manages the navigation logic
 class NavigationService {
-  static final GlobalKey<NavigatorState> navigatorKey =
-      GlobalKey<NavigatorState>();
+  static void logoutAndPopHistory() {
+    final context = Application.navigatorKey.currentContext!;
 
-  static void logoutAndPopHistory(BuildContext? dataContext) {
-    if (dataContext != null) {
-      cleanupStoredData(dataContext);
-    }
+    unawaited(cleanupStoredData(context));
 
-    navigatorKey.currentState?.pushNamedAndRemoveUntil(
-      '/${DrawerItem.navLogOut.title}',
-      (_) => false,
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute<LoginPageView>(
+        builder: (context) => const LoginPageView(),
+      ),
+      (route) => false,
     );
   }
 

@@ -7,7 +7,6 @@ import 'package:http/http.dart' as http;
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:provider/provider.dart';
-import 'package:tuple/tuple.dart';
 import 'package:uni/controller/networking/network_router.dart';
 import 'package:uni/model/entities/course.dart';
 import 'package:uni/model/entities/profile.dart';
@@ -30,9 +29,11 @@ class UriMatcher extends CustomMatcher {
 @GenerateNiceMocks([
   MockSpec<http.Client>(),
   MockSpec<http.Response>(),
-  MockSpec<SessionProvider>()
+  MockSpec<SessionProvider>(),
 ])
-void main() {
+void main() async {
+  await initTestEnvironment();
+
   group('SchedulePage Integration Tests', () {
     final mockClient = MockClient();
     final mockResponse = MockResponse();
@@ -50,11 +51,11 @@ void main() {
       final scheduleProvider = LectureProvider();
       final sessionProvider = MockSessionProvider();
 
-      when(sessionProvider.session).thenReturn(
+      when(sessionProvider.state).thenReturn(
         Session(username: 'up1234', cookies: 'cookie', faculties: ['feup']),
       );
 
-      const widget = SchedulePage();
+      final widget = SchedulePage();
 
       final providers = [
         ChangeNotifierProvider(create: (_) => scheduleProvider),
@@ -70,30 +71,39 @@ void main() {
       expect(find.byKey(const Key(scheduleSlotTimeKey1)), findsNothing);
       expect(find.byKey(const Key(scheduleSlotTimeKey2)), findsNothing);
 
-      await scheduleProvider.fetchUserLectures(
-        const Tuple2('', ''),
+      final lectures = await scheduleProvider.fetchUserLectures(
         Session(username: '', cookies: '', faculties: ['feup']),
         profile,
+        persistentSession: false,
       );
 
+      scheduleProvider.setState(lectures);
+
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byKey(const Key('schedule-page-tab-2')));
       await tester.tap(find.byKey(const Key('schedule-page-tab-2')));
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('schedule-page-tab-1')));
       await tester.tap(find.byKey(const Key('schedule-page-tab-1')));
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('schedule-page-tab-0')));
       await tester.tap(find.byKey(const Key('schedule-page-tab-0')));
       await tester.pumpAndSettle();
 
       testScheduleSlot('ASSO', '11:00', '13:00', 'EaD', 'TP', 'DRP');
 
+      await tester.ensureVisible(find.byKey(const Key('schedule-page-tab-2')));
       await tester.tap(find.byKey(const Key('schedule-page-tab-2')));
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('schedule-page-tab-3')));
       await tester.tap(find.byKey(const Key('schedule-page-tab-3')));
       await tester.pumpAndSettle();
 
       testScheduleSlot('IOPE', '14:00', '16:00', 'EaD', 'TE', 'MTD');
     }
 
-    testWidgets('Schedule with JSON Fetcher', (WidgetTester tester) async {
+    testWidgets('Schedule with JSON Fetcher', (tester) async {
       NetworkRouter.httpClient = mockClient;
       final mockJson = File('test/integration/resources/schedule_example.json')
           .readAsStringSync(encoding: const Latin1Codec());
@@ -116,7 +126,7 @@ void main() {
       await testSchedule(tester);
     });
 
-    testWidgets('Schedule with HTML Fetcher', (WidgetTester tester) async {
+    testWidgets('Schedule with HTML Fetcher', (tester) async {
       final mockHtml = File('test/integration/resources/schedule_example.html')
           .readAsStringSync(encoding: const Latin1Codec());
       when(mockResponse.body).thenReturn(mockHtml);

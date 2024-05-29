@@ -1,3 +1,4 @@
+import 'package:intl/intl.dart';
 import 'package:json_annotation/json_annotation.dart';
 
 part 'calendar_event.g.dart';
@@ -14,4 +15,20 @@ class CalendarEvent {
   String name;
   String date;
   Map<String, dynamic> toJson() => _$CalendarEventToJson(this);
+
+  DateTime? get parsedStartDate {
+    final splitDate = date.split(' ');
+    final month = splitDate.firstWhere(
+      (element) =>
+          DateFormat.MMMM('pt').dateSymbols.MONTHS.contains(element) ||
+          element == 'TBD',
+    );
+
+    try {
+      return DateFormat('dd MMMM yyyy', 'pt')
+          .parse('${splitDate[0]} $month ${splitDate.last}');
+    } catch (e) {
+      return null;
+    }
+  }
 }

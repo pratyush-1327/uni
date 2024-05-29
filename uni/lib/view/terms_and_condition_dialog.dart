@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:uni/controller/load_static/terms_and_conditions.dart';
-import 'package:uni/controller/local_storage/app_shared_preferences.dart';
+import 'package:uni/controller/fetchers/terms_and_conditions_fetcher.dart';
+import 'package:uni/controller/local_storage/preferences_controller.dart';
 import 'package:uni/view/about/widgets/terms_and_conditions.dart';
 
 enum TermsAndConditionsState { accepted, rejected }
@@ -13,8 +13,6 @@ class TermsAndConditionDialog {
 
   static Future<TermsAndConditionsState> buildIfTermsChanged(
     BuildContext context,
-    String userName,
-    String password,
   ) async {
     final termsAreAccepted =
         await updateTermsAndConditionsAcceptancePreference();
@@ -22,8 +20,7 @@ class TermsAndConditionDialog {
     if (!termsAreAccepted) {
       final routeCompleter = Completer<TermsAndConditionsState>();
       SchedulerBinding.instance.addPostFrameCallback(
-        (timestamp) =>
-            _buildShowDialog(context, routeCompleter, userName, password),
+        (timestamp) => _buildShowDialog(context, routeCompleter),
       );
       return routeCompleter.future;
     }
@@ -34,13 +31,11 @@ class TermsAndConditionDialog {
   static Future<void> _buildShowDialog(
     BuildContext context,
     Completer<TermsAndConditionsState> userTermsDecision,
-    String userName,
-    String password,
   ) {
     return showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (BuildContext context) {
+      builder: (context) {
         return AlertDialog(
           title: Text(
             'Mudança nos Termos e Condições da uni',
@@ -62,7 +57,7 @@ class TermsAndConditionDialog {
                       Navigator.of(context).pop();
                       userTermsDecision
                           .complete(TermsAndConditionsState.accepted);
-                      await AppSharedPreferences
+                      await PreferencesController
                           .setTermsAndConditionsAcceptance(areAccepted: true);
                     },
                     child: const Text(
@@ -77,7 +72,7 @@ class TermsAndConditionDialog {
                       Navigator.of(context).pop();
                       userTermsDecision
                           .complete(TermsAndConditionsState.rejected);
-                      await AppSharedPreferences
+                      await PreferencesController
                           .setTermsAndConditionsAcceptance(areAccepted: false);
                     },
                     child: const Text(
@@ -85,7 +80,7 @@ class TermsAndConditionDialog {
                     ),
                   ),
                 ],
-              )
+              ),
             ],
           ),
         );

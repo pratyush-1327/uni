@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-
-import 'package:uni/controller/local_storage/app_shared_preferences.dart';
 import 'package:uni/view/navigation_service.dart';
 import 'package:uni/view/terms_and_condition_dialog.dart';
 
@@ -17,9 +15,9 @@ class PageTransition {
   }) {
     return PageRouteBuilder(
       pageBuilder: (
-        BuildContext context,
-        Animation<double> animation,
-        Animation<double> secondaryAnimation,
+        context,
+        animation,
+        secondaryAnimation,
       ) {
         if (_isFirstPageTransition) {
           _isFirstPageTransition = false;
@@ -35,12 +33,7 @@ class PageTransition {
       transitionDuration: const Duration(milliseconds: pageTransitionDuration),
       settings: settings,
       maintainState: maintainState,
-      transitionsBuilder: (
-        BuildContext context,
-        Animation<double> animation,
-        Animation<double> secondaryAnimation,
-        Widget child,
-      ) {
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
         return FadeTransition(opacity: animation, child: child);
       },
     );
@@ -49,23 +42,16 @@ class PageTransition {
   static Future<void> requestTermsAndConditionsAcceptanceIfNeeded(
     BuildContext context,
   ) async {
-    final userPersistentInfo =
-        await AppSharedPreferences.getPersistentUserInfo();
-    final userName = userPersistentInfo.item1;
-    final password = userPersistentInfo.item2;
-
     if (context.mounted) {
       final termsAcceptance = await TermsAndConditionDialog.buildIfTermsChanged(
         context,
-        userName,
-        password,
       );
 
       switch (termsAcceptance) {
         case TermsAndConditionsState.accepted:
           return;
         case TermsAndConditionsState.rejected:
-          NavigationService.logoutAndPopHistory(null);
+          NavigationService.logoutAndPopHistory();
       }
     }
   }

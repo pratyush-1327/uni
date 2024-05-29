@@ -12,7 +12,7 @@ Future<void> addMoneyDialog(BuildContext context) async {
 
   return showDialog(
     context: context,
-    builder: (BuildContext context) {
+    builder: (context) {
       var value = 1.0;
 
       return StatefulBuilder(
@@ -46,7 +46,9 @@ Future<void> addMoneyDialog(BuildContext context) async {
                         onPressed: () {
                           final decreasedValue =
                               valueTextToNumber(controller.text) - 1;
-                          if (decreasedValue < 1) return;
+                          if (decreasedValue < 1) {
+                            return;
+                          }
 
                           controller.value = TextEditingValue(
                             text: numberToValueText(decreasedValue),
@@ -90,9 +92,9 @@ Future<void> addMoneyDialog(BuildContext context) async {
                             ),
                           );
                         },
-                      )
+                      ),
                     ],
-                  )
+                  ),
                 ],
               ),
             ),
@@ -111,7 +113,7 @@ Future<void> addMoneyDialog(BuildContext context) async {
               ElevatedButton(
                 onPressed: () => generateReference(context, value),
                 child: Text(S.of(context).generate_reference),
-              )
+              ),
             ],
           );
         },
@@ -121,13 +123,16 @@ Future<void> addMoneyDialog(BuildContext context) async {
 }
 
 final CurrencyTextInputFormatter formatter =
-    CurrencyTextInputFormatter(locale: 'pt-PT', decimalDigits: 2, symbol: '€ ');
+    CurrencyTextInputFormatter.currency(
+  locale: 'pt-PT',
+  decimalDigits: 2,
+  symbol: '€ ',
+);
 
 double valueTextToNumber(String value) =>
     double.parse(value.substring(0, value.length - 2).replaceAll(',', '.'));
 
-String numberToValueText(double number) =>
-    formatter.format(number.toStringAsFixed(2));
+String numberToValueText(double number) => number.toStringAsFixed(2);
 
 Future<void> generateReference(BuildContext context, double amount) async {
   if (amount < 1) {
@@ -135,14 +140,14 @@ Future<void> generateReference(BuildContext context, double amount) async {
     return;
   }
 
-  final session = Provider.of<SessionProvider>(context, listen: false).session;
+  final session = Provider.of<SessionProvider>(context, listen: false).state!;
   final response =
       await PrintFetcher.generatePrintMoneyReference(amount, session);
 
   if (response.statusCode == 200 && context.mounted) {
     Navigator.of(context).pop(false);
     await ToastMessage.success(context, S.of(context).reference_success);
-  } else {
+  } else if (context.mounted) {
     await ToastMessage.error(context, S.of(context).some_error);
   }
 }

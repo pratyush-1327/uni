@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/http.dart';
 import 'package:logger/logger.dart';
 import 'package:synchronized/synchronized.dart';
-import 'package:uni/controller/local_storage/app_shared_preferences.dart';
+import 'package:uni/controller/local_storage/preferences_controller.dart';
 import 'package:uni/model/entities/session.dart';
 import 'package:uni/view/navigation_service.dart';
 
@@ -22,7 +22,7 @@ class NetworkRouter {
   static http.Client? httpClient;
 
   /// The timeout for Sigarra login requests.
-  static const Duration _requestTimeout = Duration(seconds: 10);
+  static const Duration _requestTimeout = Duration(seconds: 30);
 
   /// The mutual exclusion primitive for login requests.
   static final Lock _loginLock = Lock();
@@ -36,52 +36,57 @@ class NetworkRouter {
   static Session? _cachedSession;
 
   /// Performs a login using the Sigarra API,
-  /// returning an authenticated [Session] on the given [faculties] with the
+  /// returning an authenticated [Session] with the
   /// given username [username] and password [password] if successful.
   static Future<Session?> login(
     String username,
     String password,
     List<String> faculties, {
     required bool persistentSession,
+    bool ignoreCached = false,
   }) async {
-    return _loginLock.synchronized(() async {
-      if (_lastLoginTime != null &&
-          DateTime.now().difference(_lastLoginTime!) <
-              const Duration(minutes: 1) &&
-          _cachedSession != null) {
-        Logger().d('Login request ignored due to recent login');
-        return _cachedSession;
-      }
+    return _loginLock.synchronized(
+      () async {
+        if (_lastLoginTime != null &&
+            DateTime.now().difference(_lastLoginTime!) <
+                const Duration(minutes: 1) &&
+            _cachedSession != null &&
+            !ignoreCached) {
+          Logger().d('Login request ignored due to recent login');
+          return _cachedSession;
+        }
 
-      final url =
-          '${NetworkRouter.getBaseUrls(faculties)[0]}mob_val_geral.autentica';
+        final url =
+            '${NetworkRouter.getBaseUrls(faculties)[0]}mob_val_geral.autentica';
+        final response = await http.post(
+          url.toUri(),
+          body: {'pv_login': username, 'pv_password': password},
+        ).timeout(_requestTimeout);
 
-      final response = await http.post(
-        url.toUri(),
-        body: {'pv_login': username, 'pv_password': password},
-      ).timeout(_requestTimeout);
+        if (response.statusCode != 200) {
+          Logger().e('Login failed with status code ${response.statusCode}');
+          return null;
+        }
 
-      if (response.statusCode != 200) {
-        Logger().e('Login failed with status code ${response.statusCode}');
-        return null;
-      }
+        final session = Session.fromLogin(
+          response,
+          faculties,
+          persistentSession: persistentSession,
+        );
 
-      final session = Session.fromLogin(
-        response,
-        faculties,
-        persistentSession: persistentSession,
-      );
-      if (session == null) {
-        Logger().e('Login failed: user not authenticated');
-        return null;
-      }
+        if (session == null) {
+          Logger().e('Login failed: user not authenticated');
+          return null;
+        }
 
-      Logger().i('Login successful');
-      _lastLoginTime = DateTime.now();
-      _cachedSession = session;
+        Logger().i('Login successful');
+        _lastLoginTime = DateTime.now();
+        _cachedSession = session;
 
-      return session;
-    });
+        return session;
+      },
+      timeout: _requestTimeout,
+    );
   }
 
   /// Re-authenticates the user via the Sigarra API
@@ -89,11 +94,15 @@ class NetworkRouter {
   /// returning an updated Session if successful.
   static Future<Session?> reLoginFromSession(Session session) async {
     final username = session.username;
-    final password = await AppSharedPreferences.getUserPassword();
+    final password = await PreferencesController.getUserPassword();
+
+    if (password == null) {
+      Logger().e('Re-login failed: password not found');
+      return null;
+    }
+
     final faculties = session.faculties;
     final persistentSession = session.persistentSession;
-
-    Logger().d('Re-login from session: $username, $faculties');
 
     return login(
       username,
@@ -110,17 +119,13 @@ class NetworkRouter {
     String pass,
     List<String> faculties,
   ) async {
-    return _loginLock.synchronized(() async {
-      final url =
-          '${NetworkRouter.getBaseUrls(faculties)[0]}vld_validacao.validacao';
-
-      final response = await http.post(
-        url.toUri(),
-        body: {'p_user': user, 'p_pass': pass},
-      ).timeout(_requestTimeout);
-
-      return response.body;
-    });
+    final url =
+        '${NetworkRouter.getBaseUrls(faculties)[0]}vld_validacao.validacao';
+    final response = await http.post(
+      url.toUri(),
+      body: {'p_user': user, 'p_pass': pass},
+    ).timeout(_requestTimeout);
+    return response.body;
   }
 
   /// Extracts the cookies present in [headers].
@@ -182,9 +187,12 @@ class NetworkRouter {
         final newSession = await reLoginFromSession(session);
 
         if (newSession == null) {
-          NavigationService.logoutAndPopHistory(null);
-          return Future.error('Login failed');
+          NavigationService.logoutAndPopHistory();
+          return Future.error(
+            'Re-login failed; user might have changed password',
+          );
         }
+
         session
           ..username = newSession.username
           ..cookies = newSession.cookies;
@@ -211,20 +219,18 @@ class NetworkRouter {
   /// Check if the user is still logged in,
   /// performing a health check on the user's personal page.
   static Future<bool> userLoggedIn(Session session) async {
-    return _loginLock.synchronized(() async {
-      Logger().d('Checking if user is still logged in');
+    Logger().d('Checking if user is still logged in');
 
-      final url = '${getBaseUrl(session.faculties[0])}'
-          'fest_geral.cursos_list?pv_num_unico=${session.username}';
-      final headers = <String, String>{};
-      headers['cookie'] = session.cookies;
+    final url = '${getBaseUrl(session.faculties[0])}'
+        'fest_geral.cursos_list?pv_num_unico=${session.username}';
+    final headers = <String, String>{};
+    headers['cookie'] = session.cookies;
 
-      final response = await (httpClient != null
-          ? httpClient!.get(url.toUri(), headers: headers)
-          : http.get(url.toUri(), headers: headers));
+    final response = await (httpClient != null
+        ? httpClient!.get(url.toUri(), headers: headers)
+        : http.get(url.toUri(), headers: headers));
 
-      return response.statusCode == 200;
-    });
+    return response.statusCode == 200;
   }
 
   /// Returns the base url of the user's faculties.
@@ -246,17 +252,15 @@ class NetworkRouter {
   static Future<Response> killSigarraAuthentication(
     List<String> faculties,
   ) async {
-    return _loginLock.synchronized(() async {
-      final url = '${NetworkRouter.getBaseUrl(faculties[0])}vld_validacao.sair';
-      final response = await http.get(url.toUri()).timeout(_requestTimeout);
+    final url = '${NetworkRouter.getBaseUrl(faculties[0])}vld_validacao.sair';
+    final response = await http.get(url.toUri()).timeout(_requestTimeout);
 
-      if (response.statusCode == 200) {
-        Logger().i('Logout Successful');
-      } else {
-        Logger().i('Logout Failed');
-      }
+    if (response.statusCode == 200) {
+      Logger().i('Logout Successful');
+    } else {
+      Logger().i('Logout Failed');
+    }
 
-      return response;
-    });
+    return response;
   }
 }

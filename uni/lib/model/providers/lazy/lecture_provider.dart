@@ -1,61 +1,50 @@
 import 'dart:async';
-import 'dart:collection';
 
-import 'package:tuple/tuple.dart';
 import 'package:uni/controller/fetchers/schedule_fetcher/schedule_fetcher.dart';
 import 'package:uni/controller/fetchers/schedule_fetcher/schedule_fetcher_api.dart';
 import 'package:uni/controller/fetchers/schedule_fetcher/schedule_fetcher_html.dart';
-import 'package:uni/controller/local_storage/app_lectures_database.dart';
-import 'package:uni/controller/local_storage/app_shared_preferences.dart';
+import 'package:uni/controller/local_storage/database/app_lectures_database.dart';
+import 'package:uni/controller/local_storage/preferences_controller.dart';
 import 'package:uni/model/entities/lecture.dart';
 import 'package:uni/model/entities/profile.dart';
 import 'package:uni/model/entities/session.dart';
 import 'package:uni/model/providers/state_provider_notifier.dart';
-import 'package:uni/model/request_status.dart';
+import 'package:uni/model/providers/state_providers.dart';
 
-class LectureProvider extends StateProviderNotifier {
-  LectureProvider()
-      : super(dependsOnSession: true, cacheDuration: const Duration(hours: 6));
-  List<Lecture> _lectures = [];
-
-  UnmodifiableListView<Lecture> get lectures => UnmodifiableListView(_lectures);
+class LectureProvider extends StateProviderNotifier<List<Lecture>> {
+  LectureProvider() : super(cacheDuration: const Duration(hours: 6));
 
   @override
-  Future<void> loadFromStorage() async {
+  Future<List<Lecture>> loadFromStorage(StateProviders stateProviders) async {
     final db = AppLecturesDatabase();
-    final lectures = await db.lectures();
-    _lectures = lectures;
+    return db.lectures();
   }
 
   @override
-  Future<void> loadFromRemote(Session session, Profile profile) async {
-    await fetchUserLectures(
-      await AppSharedPreferences.getPersistentUserInfo(),
-      session,
-      profile,
+  Future<List<Lecture>> loadFromRemote(StateProviders stateProviders) async {
+    return fetchUserLectures(
+      stateProviders.sessionProvider.state!,
+      stateProviders.profileProvider.state!,
+      persistentSession:
+          (await PreferencesController.getPersistentUserInfo()) != null,
     );
   }
 
-  Future<void> fetchUserLectures(
-    Tuple2<String, String> userPersistentInfo,
+  Future<List<Lecture>> fetchUserLectures(
     Session session,
     Profile profile, {
+    required bool persistentSession,
     ScheduleFetcher? fetcher,
   }) async {
-    try {
-      final lectures =
-          await getLecturesFromFetcherOrElse(fetcher, session, profile);
+    final lectures =
+        await getLecturesFromFetcherOrElse(fetcher, session, profile);
 
-      if (userPersistentInfo.item1 != '' && userPersistentInfo.item2 != '') {
-        final db = AppLecturesDatabase();
-        await db.saveNewLectures(lectures);
-      }
-
-      _lectures = lectures;
-      updateStatus(RequestStatus.successful);
-    } catch (e) {
-      updateStatus(RequestStatus.failed);
+    if (persistentSession) {
+      final db = AppLecturesDatabase();
+      await db.saveNewLectures(lectures);
     }
+
+    return lectures;
   }
 
   Future<List<Lecture>> getLecturesFromFetcherOrElse(

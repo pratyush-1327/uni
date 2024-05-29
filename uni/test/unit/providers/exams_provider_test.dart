@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
-import 'package:tuple/tuple.dart';
 import 'package:uni/controller/networking/network_router.dart';
 import 'package:uni/controller/parsers/parser_exams.dart';
 import 'package:uni/model/entities/course.dart';
@@ -14,11 +13,14 @@ import 'package:uni/model/providers/lazy/exam_provider.dart';
 import 'package:uni/model/request_status.dart';
 
 import '../../mocks/unit/providers/exams_provider_test.mocks.dart';
+import '../../test_widget.dart';
 
 @GenerateNiceMocks(
   [MockSpec<Client>(), MockSpec<ParserExams>(), MockSpec<Response>()],
 )
-void main() {
+void main() async {
+  await initTestEnvironment();
+
   group('ExamProvider', () {
     final mockClient = MockClient();
     final parserExams = MockParserExams();
@@ -61,8 +63,6 @@ void main() {
       'feup',
     );
 
-    const userPersistentInfo = Tuple2<String, String>('', '');
-
     final profile = Profile()..courses = [Course(id: 7474)];
     final session = Session(username: '', cookies: '', faculties: ['feup']);
     final userUcs = [sopeCourseUnit, sdisCourseUnit];
@@ -76,40 +76,42 @@ void main() {
 
     setUp(() {
       provider = ExamProvider();
-      expect(provider.status, RequestStatus.busy);
+      expect(provider.requestStatus, RequestStatus.busy);
     });
 
     test('When given one exam', () async {
       when(parserExams.parseExams(any, any))
           .thenAnswer((_) async => {sopeExam});
 
-      await provider.fetchUserExams(
+      final exams = await provider.fetchUserExams(
         parserExams,
-        userPersistentInfo,
         profile,
         session,
         userUcs,
+        persistentSession: false,
       );
 
-      expect(provider.exams.isNotEmpty, true);
-      expect(provider.exams, [sopeExam]);
-      expect(provider.status, RequestStatus.successful);
+      provider.setState(exams);
+
+      expect(provider.state!.isNotEmpty, true);
+      expect(provider.state, [sopeExam]);
     });
 
     test('When given two exams', () async {
       when(parserExams.parseExams(any, any))
           .thenAnswer((_) async => {sopeExam, sdisExam});
 
-      await provider.fetchUserExams(
+      final exams = await provider.fetchUserExams(
         parserExams,
-        userPersistentInfo,
         profile,
         session,
         userUcs,
+        persistentSession: false,
       );
 
-      expect(provider.status, RequestStatus.successful);
-      expect(provider.exams, [sopeExam, sdisExam]);
+      provider.setState(exams);
+
+      expect(provider.state, [sopeExam, sdisExam]);
     });
 
     test('''
@@ -130,30 +132,32 @@ When given three exams but one is to be parsed out,
       when(parserExams.parseExams(any, any))
           .thenAnswer((_) async => {sopeExam, sdisExam, specialExam});
 
-      await provider.fetchUserExams(
+      final exams = await provider.fetchUserExams(
         parserExams,
-        userPersistentInfo,
         profile,
         session,
         userUcs,
+        persistentSession: false,
       );
 
-      expect(provider.status, RequestStatus.successful);
-      expect(provider.exams, [sopeExam, sdisExam]);
+      provider.setState(exams);
+
+      expect(provider.state, [sopeExam, sdisExam]);
     });
 
     test('When an error occurs while trying to obtain the exams', () async {
       when(parserExams.parseExams(any, any))
           .thenAnswer((_) async => throw Exception('RIP'));
 
-      await provider.fetchUserExams(
-        parserExams,
-        userPersistentInfo,
-        profile,
-        session,
-        userUcs,
+      throwsA(
+        () async => provider.fetchUserExams(
+          parserExams,
+          profile,
+          session,
+          userUcs,
+          persistentSession: false,
+        ),
       );
-      expect(provider.status, RequestStatus.failed);
     });
 
     test('When Exam is today in one hour', () async {
@@ -172,16 +176,17 @@ When given three exams but one is to be parsed out,
       when(parserExams.parseExams(any, any))
           .thenAnswer((_) async => {todayExam});
 
-      await provider.fetchUserExams(
+      final exams = await provider.fetchUserExams(
         parserExams,
-        userPersistentInfo,
         profile,
         session,
         userUcs,
+        persistentSession: false,
       );
 
-      expect(provider.status, RequestStatus.successful);
-      expect(provider.exams, [todayExam]);
+      provider.setState(exams);
+
+      expect(provider.state, [todayExam]);
     });
 
     test('When Exam was one hour ago', () async {
@@ -200,16 +205,17 @@ When given three exams but one is to be parsed out,
       when(parserExams.parseExams(any, any))
           .thenAnswer((_) async => {todayExam});
 
-      await provider.fetchUserExams(
+      final exams = await provider.fetchUserExams(
         parserExams,
-        userPersistentInfo,
         profile,
         session,
         userUcs,
+        persistentSession: false,
       );
 
-      expect(provider.status, RequestStatus.successful);
-      expect(provider.exams, <Exam>[]);
+      provider.setState(exams);
+
+      expect(provider.state, <Exam>[]);
     });
 
     test('When Exam is ocurring', () async {
@@ -228,16 +234,17 @@ When given three exams but one is to be parsed out,
       when(parserExams.parseExams(any, any))
           .thenAnswer((_) async => {todayExam});
 
-      await provider.fetchUserExams(
+      final exams = await provider.fetchUserExams(
         parserExams,
-        userPersistentInfo,
         profile,
         session,
         userUcs,
+        persistentSession: false,
       );
 
-      expect(provider.status, RequestStatus.successful);
-      expect(provider.exams, [todayExam]);
+      provider.setState(exams);
+
+      expect(provider.state, [todayExam]);
     });
   });
 }

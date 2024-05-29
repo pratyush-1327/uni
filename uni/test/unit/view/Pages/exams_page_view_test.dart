@@ -10,16 +10,18 @@ import '../../../test_widget.dart';
 
 class MockExamProvider extends Mock implements ExamProvider {}
 
-void main() {
+void main() async {
+  await initTestEnvironment();
+
   group('ExamsPage', () {
     const firstExamSubject = 'SOPE';
     const firstExamDate = '2019-09-11';
     const secondExamSubject = 'SDIS';
     const secondExamDate = '2019-09-12';
 
-    testWidgets('When given an empty list', (WidgetTester tester) async {
+    testWidgets('When given an empty list', (tester) async {
       const widget = ExamsPageView();
-      final examProvider = ExamProvider()..exams = [];
+      final examProvider = ExamProvider()..setState([]);
 
       final providers = [ChangeNotifierProvider(create: (_) => examProvider)];
 
@@ -28,7 +30,7 @@ void main() {
       expect(find.byType(Card), findsNothing);
     });
 
-    testWidgets('When given a single exam', (WidgetTester tester) async {
+    testWidgets('When given a single exam', (tester) async {
       final firstExamBegin = DateTime.parse('$firstExamDate 09:00');
       final firstExamEnd = DateTime.parse('$firstExamDate 12:00');
       final firstExam = Exam(
@@ -43,19 +45,18 @@ void main() {
 
       const widget = ExamsPageView();
 
-      final examProvider = ExamProvider()..exams = [firstExam];
+      final examProvider = ExamProvider()..setState([firstExam]);
 
       final providers = [ChangeNotifierProvider(create: (_) => examProvider)];
 
       await tester.pumpWidget(testableWidget(widget, providers: providers));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(find.byKey(Key(firstExam.toString())), findsOneWidget);
       expect(find.byKey(Key('$firstExam-exam')), findsOneWidget);
     });
 
-    testWidgets('When given two exams from the same date',
-        (WidgetTester tester) async {
+    testWidgets('When given two exams from the same date', (tester) async {
       final firstExamBegin = DateTime.parse('$firstExamDate 09:00');
       final firstExamEnd = DateTime.parse('$firstExamDate 12:00');
       final firstExam = Exam(
@@ -86,12 +87,12 @@ void main() {
 
       const widget = ExamsPageView();
 
-      final examProvider = ExamProvider()..exams = examList;
+      final examProvider = ExamProvider()..setState(examList);
 
       final providers = [ChangeNotifierProvider(create: (_) => examProvider)];
 
       await tester.pumpWidget(testableWidget(widget, providers: providers));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(
         find.byKey(Key(examList.map((ex) => ex.toString()).join())),
@@ -101,8 +102,7 @@ void main() {
       expect(find.byKey(Key('$secondExam-exam')), findsOneWidget);
     });
 
-    testWidgets('When given two exams from different dates',
-        (WidgetTester tester) async {
+    testWidgets('When given two exams from different dates', (tester) async {
       final firstExamBegin = DateTime.parse('$firstExamDate 09:00');
       final firstExamEnd = DateTime.parse('$firstExamDate 12:00');
       final firstExam = Exam(
@@ -132,12 +132,12 @@ void main() {
 
       const widget = ExamsPageView();
 
-      final examProvider = ExamProvider()..exams = examList;
+      final examProvider = ExamProvider()..setState(examList);
 
       final providers = [ChangeNotifierProvider(create: (_) => examProvider)];
 
       await tester.pumpWidget(testableWidget(widget, providers: providers));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(find.byKey(Key(firstExam.toString())), findsOneWidget);
       expect(find.byKey(Key(secondExam.toString())), findsOneWidget);
@@ -146,7 +146,7 @@ void main() {
     });
 
     testWidgets('When given four exams from two different dates',
-        (WidgetTester tester) async {
+        (tester) async {
       final rooms = <String>['B119', 'B107', 'B205'];
       final firstExamBegin = DateTime.parse('$firstExamDate 09:00');
       final firstExamEnd = DateTime.parse('$firstExamDate 12:00');
@@ -196,7 +196,7 @@ void main() {
 
       const widget = ExamsPageView();
 
-      final examProvider = ExamProvider()..exams = examList;
+      final examProvider = ExamProvider()..setState(examList);
 
       final firstDayKey =
           [firstExam, secondExam].map((ex) => ex.toString()).join();
@@ -206,7 +206,7 @@ void main() {
       final providers = [ChangeNotifierProvider(create: (_) => examProvider)];
 
       await tester.pumpWidget(testableWidget(widget, providers: providers));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(find.byKey(Key(firstDayKey)), findsOneWidget);
       expect(find.byKey(Key(secondDayKey)), findsOneWidget);

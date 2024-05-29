@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:html/dom.dart';
 import 'package:html/parser.dart';
-import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart' as http;
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:uni/controller/networking/network_router.dart';
 import 'package:uni/model/entities/bus.dart';
 import 'package:uni/model/entities/bus_stop.dart';
@@ -13,31 +16,50 @@ class DeparturesFetcher {
 
   final String _stopCode;
   final BusStopData _stopData;
+  static final _client = http.IOClient(
+    HttpClient(context: SecurityContext())
+      ..badCertificateCallback =
+          (cert, host, port) => host == 'www.stcp.pt' && port == 443,
+  );
 
   Future<String> _getCSRFToken() async {
     final url =
         'https://www.stcp.pt/en/travel/timetables/?paragem=$_stopCode&t=smsbus';
 
-    final response = await http.get(url.toUri());
+    final response = await _client.get(url.toUri());
     final htmlResponse = parse(response.body);
+    try {
+      final scriptText = htmlResponse
+          .querySelectorAll('table script')
+          .where((element) => element.text.contains(_stopCode))
+          .map((e) => e.text)
+          .first;
 
-    final scriptText = htmlResponse
-        .querySelectorAll('script')
-        .where((element) => element.text.contains(_stopCode))
-        .map((e) => e.text)
-        .first;
+      final callParam = scriptText
+          .substring(scriptText.indexOf('('))
+          .split(',')
+          .firstWhere((element) => element.contains(')'));
 
-    final callParam = scriptText
-        .substring(scriptText.indexOf('('))
-        .split(',')
-        .firstWhere((element) => element.contains(')'));
-
-    final csrfToken = callParam.substring(
-      callParam.indexOf("'") + 1,
-      callParam.lastIndexOf("'"),
-    );
-
-    return csrfToken;
+      final csrfToken = callParam.substring(
+        callParam.indexOf("'") + 1,
+        callParam.lastIndexOf("'"),
+      );
+      return csrfToken;
+    } catch (e, stackTrace) {
+      unawaited(
+        Sentry.captureEvent(
+          SentryEvent(
+            throwable: e,
+            request: SentryRequest(
+              url: url,
+              data: response.body,
+            ),
+          ),
+          stackTrace: stackTrace,
+        ),
+      );
+      rethrow;
+    }
   }
 
   void throwCSRFTokenError() {
@@ -50,7 +72,7 @@ class DeparturesFetcher {
     final url =
         'https://www.stcp.pt/pt/itinerarium/soapclient.php?codigo=$_stopCode&hash123=$csrfToken';
 
-    final response = await http.get(url.toUri());
+    final response = await _client.get(url.toUri());
     final htmlResponse = parse(response.body);
 
     final tableEntries =
@@ -111,7 +133,8 @@ class DeparturesFetcher {
     // Search by approximate name
     final url =
         'https://www.stcp.pt/pt/itinerarium/callservice.php?action=srchstoplines&stopname=$stopCode';
-    final response = await http.post(url.toUri());
+
+    final response = await _client.post(url.toUri());
     final json = jsonDecode(response.body) as List<dynamic>;
     for (final busKey in json) {
       final bus = busKey as Map<String, dynamic>;
@@ -134,7 +157,8 @@ class DeparturesFetcher {
   static Future<List<Bus>> getBusesStoppingAt(String stop) async {
     final url =
         'https://www.stcp.pt/pt/itinerarium/callservice.php?action=srchstoplines&stopcode=$stop';
-    final response = await http.post(url.toUri());
+
+    final response = await _client.post(url.toUri());
 
     final json = jsonDecode(response.body) as List<dynamic>;
 

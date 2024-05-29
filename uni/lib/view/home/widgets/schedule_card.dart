@@ -1,14 +1,15 @@
-import 'dart:collection';
+import 'dart:math';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uni/generated/l10n.dart';
 import 'package:uni/model/entities/lecture.dart';
 import 'package:uni/model/providers/lazy/lecture_provider.dart';
-import 'package:uni/utils/drawer_items.dart';
+import 'package:uni/model/utils/time/week.dart';
+import 'package:uni/utils/navigation_items.dart';
 import 'package:uni/view/common_widgets/date_rectangle.dart';
 import 'package:uni/view/common_widgets/generic_card.dart';
-import 'package:uni/view/common_widgets/request_dependent_widget_builder.dart';
 import 'package:uni/view/home/widgets/schedule_card_shimmer.dart';
 import 'package:uni/view/lazy_consumer.dart';
 import 'package:uni/view/locale_notifier.dart';
@@ -34,70 +35,71 @@ class ScheduleCard extends GenericCard {
 
   @override
   Widget buildCardContent(BuildContext context) {
-    return LazyConsumer<LectureProvider>(
-      builder: (context, lectureProvider) => RequestDependentWidgetBuilder(
-        status: lectureProvider.status,
-        builder: () => generateSchedule(lectureProvider.lectures, context),
-        hasContentPredicate: lectureProvider.lectures.isNotEmpty,
-        onNullContent: Center(
-          child: Text(
-            S.of(context).no_classes,
-            style: Theme.of(context).textTheme.titleLarge,
-            textAlign: TextAlign.center,
-          ),
-        ),
-        contentLoadingWidget: const ScheduleCardShimmer().build(context),
+    return LazyConsumer<LectureProvider, List<Lecture>>(
+      builder: (context, lectures) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: getScheduleRows(context, lectures),
       ),
-    );
-  }
-
-  Widget generateSchedule(
-    UnmodifiableListView<Lecture> lectures,
-    BuildContext context,
-  ) {
-    final lectureList = List<Lecture>.of(lectures);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: getScheduleRows(context, lectureList),
+      hasContent: (lectures) => lectures.isNotEmpty,
+      onNullContent: Center(
+        child: Text(
+          S.of(context).no_classes,
+          style: Theme.of(context).textTheme.titleLarge,
+          textAlign: TextAlign.center,
+        ),
+      ),
+      contentLoadingWidget: const ScheduleCardShimmer().build(context),
     );
   }
 
   List<Widget> getScheduleRows(BuildContext context, List<Lecture> lectures) {
+    final now = DateTime.now();
+    final week = Week(start: now);
+
     final rows = <Widget>[];
 
-    final now = DateTime.now();
-    var added = 0; // Lectures added to widget
-    var lastAddedLectureDate = DateTime.now(); // Day of last added lecture
+    final lecturesByDay = lectures
+        .where((lecture) => week.contains(lecture.startTime))
+        .groupListsBy(
+          (lecture) => lecture.startTime.weekday,
+        )
+        .entries
+        .toList()
+        .sortedBy<DateTime>((element) => week.getWeekday(element.key))
+        .toList();
 
-    for (var i = 0; added < 2 && i < lectures.length; i++) {
-      if (now.compareTo(lectures[i].endTime) < 0) {
-        if (lastAddedLectureDate.weekday != lectures[i].startTime.weekday &&
-            lastAddedLectureDate.compareTo(lectures[i].startTime) <= 0) {
-          rows.add(
-            DateRectangle(
-              date:
-                  Provider.of<LocaleNotifier>(context).getWeekdaysWithLocale()[
-                      (lectures[i].startTime.weekday - 1) % 7],
-            ),
-          );
-        }
+    for (final dayLectures
+        in lecturesByDay.sublist(0, min(2, lecturesByDay.length))) {
+      final day = dayLectures.key;
+      final lectures = dayLectures.value
+          .where(
+            (element) =>
+                // Hide finished lectures from today
+                element.startTime.weekday != DateTime.now().weekday ||
+                element.endTime.isAfter(DateTime.now()),
+          )
+          .toList();
 
-        rows.add(createRowFromLecture(context, lectures[i]));
-        lastAddedLectureDate = lectures[i].startTime;
-        added++;
+      if (lectures.isEmpty) {
+        continue;
+      }
+
+      rows.add(
+        DateRectangle(
+          date: Provider.of<LocaleNotifier>(context)
+              .getWeekdaysWithLocale()[(day - 1) % 7],
+        ),
+      );
+
+      for (final lecture in lectures) {
+        rows.add(createRowFromLecture(context, lecture));
+      }
+
+      if (lectures.length >= 2) {
+        break;
       }
     }
 
-    if (rows.isEmpty) {
-      rows
-        ..add(
-          DateRectangle(
-            date: Provider.of<LocaleNotifier>(context)
-                .getWeekdaysWithLocale()[lectures[0].startTime.weekday % 7],
-          ),
-        )
-        ..add(createRowFromLecture(context, lectures[0]));
-    }
     return rows;
   }
 
@@ -119,9 +121,9 @@ class ScheduleCard extends GenericCard {
 
   @override
   String getTitle(BuildContext context) =>
-      S.of(context).nav_title(DrawerItem.navSchedule.title);
+      S.of(context).nav_title(NavigationItem.navSchedule.route);
 
   @override
   Future<Object?> onClick(BuildContext context) =>
-      Navigator.pushNamed(context, '/${DrawerItem.navSchedule.title}');
+      Navigator.pushNamed(context, '/${NavigationItem.navSchedule.route}');
 }

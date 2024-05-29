@@ -5,7 +5,9 @@ import 'package:uni/view/schedule/widgets/schedule_slot.dart';
 
 import '../../../test_widget.dart';
 
-void main() {
+void main() async {
+  await initTestEnvironment();
+
   group('Schedule Slot', () {
     const subject = 'SOPE';
     final begin = DateTime(2021, 06, 01, 10);
@@ -17,7 +19,7 @@ void main() {
     const teacher = 'JAS';
     const occurrId = 12345;
 
-    testWidgets('When given a single room', (WidgetTester tester) async {
+    testWidgets('When given a single room', (tester) async {
       final widget = ScheduleSlot(
         subject: subject,
         typeClass: typeClass,
